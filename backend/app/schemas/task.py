@@ -14,6 +14,7 @@ class TaskCreate(BaseModel):
 
     task_type: str = Field(..., min_length=1, max_length=100)
     payload: dict[str, Any] = Field(default_factory=dict)
+    idempotency_key: str | None = Field(default=None, max_length=255)
 
 
 class TaskResponse(BaseModel):
@@ -25,5 +26,8 @@ class TaskResponse(BaseModel):
     task_type: str
     payload: dict[str, Any]
     status: TaskStatus
+    attempts: int
+    max_attempts: int
+    idempotency_key: str | None
     created_at: datetime
     updated_at: datetime
