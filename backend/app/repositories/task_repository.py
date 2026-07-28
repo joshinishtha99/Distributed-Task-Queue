@@ -3,6 +3,7 @@
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import Task, TaskStatus
@@ -23,3 +24,8 @@ class TaskRepository:
 
     async def get_by_id(self, task_id: UUID) -> Task | None:
         return await self._session.get(Task, task_id)
+
+    async def update_status(self, task_id: UUID, status: TaskStatus) -> None:
+        await self._session.execute(
+            update(Task).where(Task.id == task_id).values(status=status)
+        )
