@@ -1,4 +1,4 @@
-"""Concurrent worker with retries, exponential backoff, DLQ, graceful shutdown."""
+"""Concurrent worker with retries, backoff, DLQ, graceful shutdown, live events."""
 
 import asyncio
 import signal
@@ -10,6 +10,7 @@ from app.queue.backoff import compute_delay
 from app.queue.task_queue import TaskQueue
 from app.repositories.task_repository import TaskRepository
 from app.tasks.handlers import get_handler
+from app.websocket.events import publish_event
 
 
 class Worker:
@@ -19,8 +20,15 @@ class Worker:
         self._in_flight: set[asyncio.Task] = set()
         self._shutting_down = False
 
+    async def _emit(self, task_id, task_type, status, attempts) -> None:
+        await publish_event({
+            "id": str(task_id),
+            "task_type": task_type,
+            "status": status,
+            "attempts": attempts,
+        })
+
     async def _retry_later(self, task_id, attempt: int) -> None:
-        """Wait with backoff, then put the task back on the queue."""
         delay = compute_delay(attempt)
         print(f"[worker] retrying {task_id} in {delay:.1f}s (attempt {attempt})")
         await asyncio.sleep(delay)
@@ -38,13 +46,14 @@ class Worker:
             await session.commit()
             await session.refresh(task)
             print(f"[worker] running {task.id} ({task.task_type}) attempt {task.attempts}/{task.max_attempts}")
+            await self._emit(task.id, task.task_type, "running", task.attempts)
 
             handler = get_handler(task.task_type)
             if handler is None:
                 await repo.mark_dead(task.id, f"no handler for {task.task_type}")
                 await session.commit()
                 await self._queue.send_to_dlq(task.id)
-                print(f"[worker] DEAD {task.id}: no handler")
+                await self._emit(task.id, task.task_type, "dead", task.attempts)
                 return
 
             try:
@@ -52,17 +61,20 @@ class Worker:
                 await repo.update_status(task.id, TaskStatus.COMPLETED)
                 await session.commit()
                 print(f"[worker] completed {task.id}")
+                await self._emit(task.id, task.task_type, "completed", task.attempts)
             except Exception as exc:  # noqa: BLE001
                 if task.attempts < task.max_attempts:
                     await repo.mark_failed(task.id, str(exc))
                     await session.commit()
+                    await self._emit(task.id, task.task_type, "failed", task.attempts)
                     print(f"[worker] FAILED {task.id}: {exc}")
                     await self._retry_later(task.id, task.attempts)
                 else:
                     await repo.mark_dead(task.id, str(exc))
                     await session.commit()
                     await self._queue.send_to_dlq(task.id)
-                    print(f"[worker] DEAD {task.id} after {task.attempts} attempts: {exc}")
+                    await self._emit(task.id, task.task_type, "dead", task.attempts)
+                    print(f"[worker] DEAD {task.id} after {task.attempts} attempts")
 
     async def _run_tracked(self, task_id) -> None:
         try:
