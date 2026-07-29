@@ -1,8 +1,8 @@
 # Distributed Task Queue
 
-A task queue built from scratch — the kind of thing Celery or Sidekiq gives you, but assembled by hand so I could actually understand how the pieces fit. You POST a job to an API, it lands in a Redis queue, and a pool of workers picks it up, runs it, and records the result in Postgres. If a job fails, it retries with backoff; if it keeps failing, it goes to a dead-letter queue instead of vanishing.
+A task queue built from scratch, the kind of thing Celery or Sidekiq gives you, but assembled by hand so I could actually understand how the pieces fit. You POST a job to an API, it lands in a Redis queue, and a pool of workers picks it up, runs it, and records the result in Postgres. If a job fails, it retries with backoff; if it keeps failing, it goes to a dead-letter queue instead of vanishing.
 
-I built this to learn distributed systems properly rather than just reading about them. Most of the interesting problems only show up once you have separate processes talking to each other — what happens when a worker dies mid-job, how do you not run the same job twice, how do you add capacity without rewriting anything. This project is me working through those.
+I built this to learn distributed systems properly rather than just reading about them. Most of the interesting problems only show up once you have separate processes talking to each other, what happens when a worker dies mid-job, how do you not run the same job twice, how do you add capacity without rewriting anything. This project is me working through those.
 
 There's a live dashboard too, so you can watch tasks move through the system in real time.
 
@@ -11,11 +11,11 @@ There's a live dashboard too, so you can watch tasks move through the system in 
 ## What it does
 
 - **REST API** to submit and check on tasks (FastAPI)
-- **Postgres** as the source of truth — every task and its full history lives here
+- **Postgres** as the source of truth, every task and its full history lives here
 - **Redis** as the queue — holds work in motion, decoupling the API from the workers
 - **Concurrent workers** that run up to N tasks at once and shut down gracefully instead of dropping in-flight work
 - **Retries with exponential backoff**, so a flaky downstream gets a few more chances before a task is given up on
-- **Dead-letter queue** for tasks that exhaust their retries — nothing fails silently
+- **Dead-letter queue** for tasks that exhaust their retries, nothing fails silently
 - **Idempotency keys** so a client retrying the same request doesn't create duplicate work
 - **A real-time dashboard** over WebSockets showing tasks and status counts as they happen
 
